@@ -52,8 +52,8 @@ curl -X POST -H "Content-Type: application/json" \
 ```
 
 messageが **tmp successful** なら正常です。  
-該当Cognitoを確認してみると、先ほど登録したメールアドレスに紐づいたユーザーがいるはずです。
-仮登録に使用したメールアドレス宛に認証コードが届いていると思うので、コピペしておきましょう。
+該当Cognitoを確認してみると、先ほど登録したメールアドレスに紐づいたユーザーがいるはずです。  
+仮登録に使用したメールアドレス宛に認証コードが届いていると思うので、コピペしておきましょう。  
 
 ### 認証コードを利用して本登録APIを叩く。  
 
@@ -65,9 +65,9 @@ curl -X POST -H "Content-Type: application/json" \
 {"message": "prd successful"}
 ```
 
-messageが **prd successful** なら正常です。
-該当Cognitoを確認してみると、先ほど登録したメールアドレスに紐づいたユーザーのステータスが変更されているはずです。
-これでCognitoにユーザーとして認められた状態になりました。
+messageが **prd successful** なら正常です。  
+該当Cognitoを確認してみると、先ほど登録したメールアドレスに紐づいたユーザーのステータスが変更されているはずです。  
+これでCognitoにユーザーとして認められた状態になりました。  
 
 
 ### 登録で用いたメールアドレス、パスワードを利用して、ログインAPIを叩く。
@@ -80,11 +80,11 @@ curl -X POST -H "Content-Type: application/json" \
 {"message": "login successful", "AccessToken": "eJraW...", "RefreshToken": "eyJjd....", "IdToken": "eyJra..."}
 ```
 
-messageが **login successful** なら正常です。
+messageが **login successful** なら正常です。  
 
 
 ### 返却された**Idtoken**をカスタムヘッダーに設定して、挨拶APIを叩く。  
-messageが **Hello. CognitoUser!"** なら正常です。
+messageが **Hello. CognitoUser!"** なら正常です。  
 
 ```
 curl https://xxxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/dev/hello -H 'X-Auth:eyJra...'
