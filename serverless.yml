@@ -1,0 +1,201 @@
+service: simple-authorization-projecti
+
+frameworkVersion: '2'
+
+provider:
+  name: aws
+  runtime: python3.8
+  stage: dev
+  region: ap-northeast-1
+
+functions:
+
+  # 挨拶API
+  hello:
+    handler: hello.handler
+    events:
+      - http:
+          path: /hello/
+          method: get
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId: !Ref ApiGatewayWithAuthorizationAuthorizer
+        cors:
+          origin: '*'
+          headers:
+            - Content-Type
+            - X-Amz-Date
+            - Authorization
+            - X-Api-Key
+            - X-Amz-Security-Token
+            - X-Amz-User-Agent
+            - X-Auth
+          allowCredentials: false
+
+  # 仮登録API
+  tmp:
+    handler: entry_tmp.handler
+    events:
+      - http:
+          path: /entry/tmp/
+          method: post
+
+  # 本登録API
+  prd:
+    handler: entry_prd.handler
+    events:
+      - http:
+          path: /entry/prd/
+          method: post
+
+  # ログインAPI
+  login:
+    handler: login.handler
+    events:
+      - http:
+          path: /login/
+          method: post
+
+resources:
+  Resources:
+    ApiGatewayWithAuthorizationUserPool:
+      Type: 'AWS::Cognito::UserPool'
+      Properties:
+        # パスワード忘れの際の復帰方法
+        AccountRecoverySetting:
+          RecoveryMechanisms:
+            - Name: 'verified_email'
+              Priority: 1
+        AdminCreateUserConfig:
+          # 管理者権限を持つLambdaでのみユーザー作成を実行するので有効にする(ユーザー自身がSDKでサインアップする際はfalseにすること)
+          AllowAdminCreateUserOnly: false
+          InviteMessageTemplate:
+            EmailMessage: 'Your username is {username} and temporary password is {####}.'
+            EmailSubject: 'Your temporary password'
+            SMSMessage: 'Your username is {username} and temporary password is {####}.'
+        UsernameAttributes:
+          - email
+        AutoVerifiedAttributes:
+          # emailは自動的に検証し、保有を検証するうようにしておく
+          - email
+        # デバイスはいったん記憶させない、今後MFA認証を実装する場合に有効にするのを検討
+        DeviceConfiguration:
+          ChallengeRequiredOnNewDevice: false
+          DeviceOnlyRememberedOnUserPrompt: true
+        EmailConfiguration:
+          EmailSendingAccount: COGNITO_DEFAULT
+        EmailVerificationMessage: 'Your verification code is {####}.'
+        EmailVerificationSubject: 'Your verification code'
+        MfaConfiguration: OFF
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 6
+            RequireLowercase: false
+            RequireNumbers: false
+            RequireSymbols: false
+            RequireUppercase: false
+            # 管理者によるパスワードリセットは実装しないので、最長にしておく(セキュリティホールになる様子であれば今後対応を検討)
+            TemporaryPasswordValidityDays: 365
+        Schema:
+          - AttributeDataType: String
+            DeveloperOnlyAttribute: false
+            # OIDC, SAML2などのIDプロバイダーを追加し属性マッピングする可能性があるので変更可能にしておく
+            Mutable: true
+            Name: email
+            Required: true
+        SmsAuthenticationMessage: 'Your verification code is {####}.'
+        SmsVerificationMessage: 'Your verification code is {####}.'
+        UsernameConfiguration:
+          # 大文字と小文字を区別する
+          CaseSensitive: true
+        UserPoolAddOns:
+          AdvancedSecurityMode: AUDIT # いったん監視のみし、CloudWatchにてログ確認のみにする、今後セキュリティ強化のニーズが高まったらENFORCEDへ設定したい
+        UserPoolName: ${self:service}-${self:provider.stage}-user-pool
+        UserPoolTags:
+          Service: ${self:service}-${self:provider.stage}
+        VerificationMessageTemplate:
+          DefaultEmailOption: CONFIRM_WITH_CODE # 認証リンクの送信は行わない、コード送信のみ送信
+          EmailMessage: 'Your verification code is {####}.'
+          EmailSubject: 'Your verification code'
+          SmsMessage: 'Your verification code is {####}.'
+
+    ApiGatewayWithAuthorizationUserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        CallbackURLs:
+          - 'http://localhost:3000'
+        ClientName: ${self:service}-${self:provider.stage}-user-pool-client
+        DefaultRedirectURI: 'http://localhost:3000'
+        ExplicitAuthFlows:
+          - ALLOW_USER_PASSWORD_AUTH
+          - ALLOW_ADMIN_USER_PASSWORD_AUTH
+          - ALLOW_REFRESH_TOKEN_AUTH
+        LogoutURLs:
+          - 'http://localhost:3000'
+        PreventUserExistenceErrors: ENABLED # Cognitoから返却するエラーは具体的にしておく(エラーによってUIを動的にしたい可能性があるので...)
+        ReadAttributes:
+          - email
+        RefreshTokenValidity: 10 # リフレッシュトークンの生存日数
+        SupportedIdentityProviders:
+          - COGNITO # 今後拡張していくが、今はCognitoのみでOK
+        UserPoolId:
+          Ref: ApiGatewayWithAuthorizationUserPool
+        WriteAttributes: # 外部のIDプロバイダー利用時に属性を書き込む可能性があるので使用している属性情報の書き込みが可能にしておく
+          - email
+          
+    ApiGatewayWithAuthorizationAuthorizer:
+      Type: AWS::ApiGateway::Authorizer
+      DependsOn:
+        - ApiGatewayRestApi # 暗黙的に適用されるが一応入れておく
+      Properties:
+        Name: ApiGatewayWithAuthorizationAuthorizer
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        IdentitySource: method.request.header.X-Auth
+        Type: COGNITO_USER_POOLS
+        ProviderARNs:
+          - Fn::GetAtt: [ ApiGatewayWithAuthorizationUserPool, Arn ] 
+  
+    GatewayResponseDefault4XX:
+      Type: 'AWS::ApiGateway::GatewayResponse'
+      Properties:
+        # ResponseParameters:
+          # gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          # gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+        ResponseType: DEFAULT_4XX
+        RestApiId:
+          Ref: ApiGatewayRestApi
+    UNAUTHORIZED:
+      Type: 'AWS::ApiGateway::GatewayResponse'
+      Properties:
+        # ResponseParameters:
+          # gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          # gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+        ResponseType: UNAUTHORIZED
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        StatusCode: '401'
+        ResponseTemplates:
+          application/json: '{"code":410,"message":$context.error.messageString}'
+    ACCESSDENIED:
+      Type: 'AWS::ApiGateway::GatewayResponse'
+      Properties:
+        # ResponseParameters:
+          # gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          #∂ gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+        ResponseType: ACCESS_DENIED
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        StatusCode: '200'
+        ResponseTemplates:
+          application/json: '{"code":410,"message":$context.error.messageString}'
+
+  Outputs:
+    CognitoUserPoolId:
+      Value:
+        Ref: ApiGatewayWithAuthorizationUserPool
+    CognitoUserPoolIdARN:
+      Value: { Fn::GetAtt: [ ApiGatewayWithAuthorizationUserPool, Arn ] }
+    CognitoUserPoolClientId:
+      Value:
+        Ref: ApiGatewayWithAuthorizationUserPoolClient
