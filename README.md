@@ -28,7 +28,8 @@ Serverless FrameworkとCognitoを使ったユーザー認証システムをさ�
 ユーザーはApi Gatewayを通して、各APIにアクセスできますが、  
 helloAPIだけは、 Cognitoユーザープール認証済みユーザのみアクセスできる構成になっております。
 
-<img height="300" src="/Users/kuwanohiroshishou/Downloads/qiita_アーキテクチャ-Page-1.drawio (7).png" width="470"/>
+![qiita_アーキテクチャ-Page-1 drawio (7)](https://user-images.githubusercontent.com/56749766/145922385-988a2775-68cf-411a-ad76-3ca39844713c.png)
+
 
 ### 構築手順
 
